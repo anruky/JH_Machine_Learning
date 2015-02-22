@@ -1,0 +1,112 @@
+Practical Machine Learning Project
+========================================================
+
+Introduction
+-------------------------------
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement. a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The goal of this project is to predict the manner in which they did the exercise.
+
+Loading data and Cleaning data
+-------------------------------
+
+The following code loads two files.
+
+```{r,results='hide',cache=TRUE}
+#load raw data
+setwd("/Users/gzhu/Desktop/Johns_Hopkins_Data_Science/8_Machine Learning/project/")
+training_orig <- read.csv("pml-training.csv", header = TRUE)
+testcase  <- read.csv('pml-testing.csv', header = TRUE)
+```
+
+To clean the raw data:
+
+- Removing columns which are mostly with value "NA" or empty
+
+- Removing predictors which have low variance
+
+- Removing meaningless columns like user name
+
+- Converting factor to numeric
+```{r,results='hide',cache=TRUE}
+library(caret)
+naCount<- apply(training_orig,2,function(x) {sum(is.na(x) | x=="")});
+training_raw <- training_orig[,which(naCount <  nrow(training_orig)*0.8)];  
+
+noVar <- nearZeroVar(training_raw, saveMetrics = TRUE)
+training_raw <- training_raw[, 8:ncol(training_raw)]
+
+n <- length(training_raw)
+training_new <- data.frame(lapply(training_raw[,-n], as.numeric))
+training_new$classe <- training_raw$classe
+```
+
+
+Splitting training dataset 
+-------------------------------
+60% for training, 40% for testing
+
+```{r,results='hide',cache=TRUE}
+set.seed(3433)
+trainIndex <- createDataPartition(y = training_new$classe, p=0.6,list=FALSE)
+training <- training_new[trainIndex,]
+testing <- training_new[-trainIndex,]
+```
+
+
+PCA compression
+-------------------------------
+PCA is done to build a weighted combination of predictors.
+
+```{r,results='hide',cache=TRUE}
+preProc <- preProcess(training[,-n], method = "pca")
+trainPCA <- predict(preProc, training[,-n])
+trainPCA$classe <- training$classe
+
+testPCA <- predict(preProc, testing[,-n])
+testPCA$classe <- testing$classe
+```
+
+Create models with cross validation
+-------------------------------
+Use Random forest , based on the PCA data. The accuracy is about 97.2%.
+
+```{r,cache=TRUE}
+library(randomForest)
+fit_pca <- randomForest(classe ~ ., data=trainPCA)
+predrf <- predict(fit_pca, testPCA)
+confusionMatrix(testPCA$classe, predrf)
+```
+
+PCA is losing some variance and make the accuracy low. Now run the model on the original data. Now the accuracy is about 99.3%.
+```{r,cache=TRUE}
+fit <- randomForest(classe ~ ., data=training)
+predrf <- predict(fit, testing)
+confusionMatrix(testing$classe, predrf)
+
+```
+
+To better improve the model and to avoid over-fitting, we use can cross validation technique as below. However, it runs for a very very long time on my MAC.
+```{r eval=FALSE}
+cross validation - it runs for a very long time on my MAC. Had to comment it.
+controlf <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+fit_rf <- train(classe ~ ., method="rf",  data=trainPCA, trControl = controlf)
+```
+
+
+Predicting 20 test cases
+-------------------------------
+Finally, the random forest model tuned without PCA  is used to predict  20 test cases available in the test data loaded at the beginning of the project.
+
+```{r,cache=TRUE}
+
+testcase$classe <- c(rep("P",20))
+testcase2 <- subset(testcase, select = (colnames(testcase) %in% colnames(training)))
+n <- length(testcase2)
+testcase3 <- data.frame(lapply(testcase2[,-n], as.numeric))
+testcase3$classe <- c(rep("P",20))
+
+answers <- predict(fit, testcase3)
+answers
+```
+
